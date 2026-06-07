@@ -1,0 +1,221 @@
+@import url("https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "DM Sans", sans-serif;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% -10%, rgba(139,92,246,0.18) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 10%, rgba(251,191,36,0.1) 0%, transparent 50%),
+      radial-gradient(ellipse 70% 60% at 50% 100%, rgba(251,191,36,0.06) 0%, transparent 55%),
+      linear-gradient(160deg, #040810 0%, #080f1e 40%, #04090f 100%);
+    background-attachment: fixed;
+    color: #e8eaf0;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  button, input {
+    font: inherit;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+  /* Number input arrows hide */
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { opacity: 0.3; }
+}
+
+@layer components {
+  .app-shell {
+    @apply mx-auto min-h-screen w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-8;
+  }
+
+  /* ── Cards ── */
+  .glass-card {
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.08);
+    @apply rounded-2xl p-5 shadow-glass backdrop-blur-xl;
+  }
+
+  .glass-card-rich {
+    background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+    border: 1px solid rgba(255,255,255,0.1);
+    @apply rounded-2xl p-6 shadow-glass backdrop-blur-xl;
+  }
+
+  .hero-card {
+    background: linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(251,191,36,0.06) 50%, rgba(255,255,255,0.03) 100%);
+    border: 1px solid rgba(255,255,255,0.1);
+    @apply relative overflow-hidden rounded-2xl p-6 shadow-glass backdrop-blur-xl sm:p-8;
+  }
+
+  .hero-card::before {
+    content: "";
+    position: absolute;
+    top: -80px;
+    right: -80px;
+    width: 280px;
+    height: 280px;
+    background: radial-gradient(circle, rgba(251,191,36,0.08), transparent 65%);
+    pointer-events: none;
+  }
+
+  /* ── Typography ── */
+  .headline {
+    font-family: "Syne", sans-serif;
+    @apply text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl;
+    font-weight: 800;
+  }
+
+  .section-kicker {
+    @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-widest;
+    background: rgba(251,191,36,0.1);
+    border: 1px solid rgba(251,191,36,0.2);
+    color: #fbbf24;
+    font-weight: 600;
+  }
+
+  .card-title {
+    font-family: "Syne", sans-serif;
+    @apply text-lg font-bold text-white;
+    font-weight: 700;
+  }
+
+  .card-subtitle {
+    @apply mt-0.5 text-sm text-slate-400 font-normal;
+  }
+
+  .metric-value {
+    font-family: "Syne", sans-serif;
+    @apply text-4xl font-black tracking-tight text-white;
+    font-weight: 800;
+  }
+
+  .metric-label {
+    @apply text-xs uppercase tracking-widest text-slate-500 font-medium;
+  }
+
+  /* ── Inputs ── */
+  .input-field {
+    @apply w-full rounded-xl px-4 py-3 text-sm text-white outline-none transition;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+  }
+
+  .input-field::placeholder {
+    color: rgba(255,255,255,0.25);
+  }
+
+  .input-field:focus {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(251,191,36,0.4);
+    box-shadow: 0 0 0 3px rgba(251,191,36,0.08);
+  }
+
+  /* ── Buttons ── */
+  .button-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-slate-950 transition-all duration-200;
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    font-weight: 600;
+    box-shadow: 0 4px 20px rgba(251,191,36,0.25);
+  }
+
+  .button-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 28px rgba(251,191,36,0.35);
+  }
+
+  .button-primary:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .button-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium text-slate-200 transition-all duration-200;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    font-weight: 500;
+  }
+
+  .button-secondary:hover:not(:disabled) {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.18);
+  }
+
+  .button-secondary:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .button-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-medium text-slate-300 transition-all;
+    font-weight: 500;
+  }
+
+  .button-ghost:hover {
+    background: rgba(255,255,255,0.07);
+  }
+
+  /* ── Stat chip ── */
+  .stat-chip {
+    @apply rounded-xl p-4;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+
+  /* ── Badges ── */
+  .badge-success {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold;
+    background: rgba(52,211,153,0.12);
+    border: 1px solid rgba(52,211,153,0.2);
+    color: #34d399;
+    font-weight: 600;
+  }
+
+  .badge-warn {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold;
+    background: rgba(251,191,36,0.12);
+    border: 1px solid rgba(251,191,36,0.25);
+    color: #fbbf24;
+    font-weight: 600;
+  }
+
+  .badge-error {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold;
+    background: rgba(251,113,133,0.12);
+    border: 1px solid rgba(251,113,133,0.2);
+    color: #fb7185;
+    font-weight: 600;
+  }
+
+  /* ── Animations ── */
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-in {
+    animation: fade-in 0.3s ease forwards;
+  }
+}

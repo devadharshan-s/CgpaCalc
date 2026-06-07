@@ -8,6 +8,8 @@ import lombok.Setter;
 @Getter @Setter
 public class UserDTO {
 
+    private Long id;
+
     @NotBlank(message = "Name cannot be empty")
     private String userName;
 
