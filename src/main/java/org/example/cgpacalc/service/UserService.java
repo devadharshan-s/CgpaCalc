@@ -11,6 +11,7 @@ import org.example.cgpacalc.repo.UsersRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -23,24 +24,18 @@ public class UserService {
 
     public ProfileDTO getProfile(Long userId){
 
-        ProfileDTO profileDTO = new ProfileDTO();
-
         Users user = usersRepository.findById(userId)
                 .orElseThrow(() -> (new RuntimeException("User not found for the given UserId")));
 
-        double cgpa = cgpaCalcService.calculateCgpa(userId);
-
         List<SemesterDTO> semesters = semesterService.findAllSemesterByUserId(userId);
 
-//        List<SemesterDTO> semesterDTOS = semesters.stream()
-//                .map(s -> {
-//                    SemesterDTO semesterDTO = new SemesterDTO();
-//                    semesterDTO.setSgpa(s.getSgpa());
-//                    semesterDTO.setSemester(s.getSemester());
-//                    semesterDTO.setCredits(s.getCredits());
-//                    return semesterDTO;
-//                })
-//                .toList();
+        double cgpa = 0.00;
+
+        if(!semesters.isEmpty()){
+            cgpa = cgpaCalcService.calculateCgpa(userId);
+        }
+
+        ProfileDTO profileDTO = new ProfileDTO();
 
         profileDTO.setName(user.getName());
         profileDTO.setEmail(user.getEmail());
@@ -48,7 +43,30 @@ public class UserService {
         profileDTO.setSemesters(semesters);
 
         return profileDTO;
+    }
 
+    public ProfileDTO createUser(String username, String email){
+        Optional<Users> user = usersRepository.findByEmail(email);
+
+        if(user.isPresent()){
+            return getProfile(user.get().getId());
+        }
+
+        UserDTO userDTO = new UserDTO();
+        userDTO.setUserName(username);
+        userDTO.setEmail(email);
+
+        UserDTO savedUser = saveUser(userDTO);
+
+        ProfileDTO profileDTO = new ProfileDTO();
+
+        profileDTO.setId(savedUser.getId());
+        profileDTO.setName(username);
+        profileDTO.setEmail(email);
+        profileDTO.setCgpa(0.0);
+        profileDTO.setSemesters(List.of());
+
+        return profileDTO;
     }
 
     @Transactional

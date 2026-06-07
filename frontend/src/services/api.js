@@ -1,30 +1,36 @@
 import axios from "axios";
 
-// Empty baseURL so all requests go through Vite's proxy (same origin = no CORS)
 const api = axios.create({
   baseURL: "",
+  withCredentials: true, // send session cookie on every request
 });
 
+export function getMe() {
+  return api.get("/me").then((r) => r.data);
+}
+
 export function createUser(payload) {
-  return api.post("/createUser", payload).then((response) => response.data);
+  return api.post("/createUser", payload).then((r) => r.data);
 }
 
 export function getProfile(userId) {
-  return api.get(`/users/${userId}/cgpa`).then((response) => response.data);
+  return api.get(`/users/${userId}/cgpa`).then((r) => r.data);
 }
 
 export function saveSemester(userId, payload) {
-  return api.post(`/users/${userId}/semester`, payload).then((response) => response.data);
+  return api.post(`/users/${userId}/semester`, payload).then((r) => r.data);
 }
 
 export function updateSemester(userId, payload) {
-  return api.patch(`/users/${userId}/updateSemester`, payload).then((response) => response.data);
+  return api.patch(`/users/${userId}/updateSemester`, payload).then((r) => r.data);
 }
 
 export function deleteSemester(userId, semesterId) {
+  // Backend expects the DB row id as body — semesterId here is the semester number
+  // We pass it as a number in the request body
   return api
     .delete(`/users/${userId}/deleteSemester`, { data: semesterId })
-    .then((response) => response.data);
+    .then((r) => r.data);
 }
 
 export function calculateTargetCgpa(userId, payload) {
@@ -32,10 +38,7 @@ export function calculateTargetCgpa(userId, payload) {
     targetCgpa: String(payload.targetCgpa),
     remainingCredits: String(payload.remainingCredits),
   });
-
-  return api
-    .get(`/users/${userId}/targetCgpa?${params.toString()}`)
-    .then((response) => response.data);
+  return api.get(`/users/${userId}/targetCgpa?${params}`).then((r) => r.data);
 }
 
 export default api;

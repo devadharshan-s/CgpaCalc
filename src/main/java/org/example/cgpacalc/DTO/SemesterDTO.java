@@ -1,9 +1,6 @@
 package org.example.cgpacalc.DTO;
 
-import jakarta.validation.constraints.DecimalMax;
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -11,6 +8,7 @@ import lombok.Setter;
 public class SemesterDTO {
 
     @Min(value = 1, message = "Semester must be greater than 0")
+    @Max(value = 8, message = "Maximum 8 semesters allowed")
     private Integer semester;
 
     @DecimalMin(value = "0.0", message = "SGPA cannot be negative")

@@ -9,6 +9,8 @@ import java.util.List;
 @Setter
 public class ProfileDTO {
 
+    private Long id;
+
     private String name;
 
     private String email;

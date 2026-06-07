@@ -11,8 +11,13 @@ public class CheckUserIfExists {
 
     private final UsersRepository usersRepository;
 
-    public Users getUserOrThrow(Long userId){
+//    public Users getUserOrThrow(Long userId){
+//        return usersRepository.findById(userId)
+//                .orElseThrow(() -> (new RuntimeException("User not found for the given UserId")));
+//    }
+
+    public Users checkUserIfExists(Long userId){
         return usersRepository.findById(userId)
-                .orElseThrow(() -> (new RuntimeException("User not found for the given UserId")));
+                .orElseThrow(() -> new RuntimeException("User not found for the given UserId"));
     }
 }

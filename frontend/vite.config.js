@@ -6,14 +6,12 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/users": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
-      },
-      "/createUser": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
-      },
+      "/me": { target: "http://localhost:8080", changeOrigin: true, secure: false },
+      "/users": { target: "http://localhost:8080", changeOrigin: true, secure: false },
+      "/createUser": { target: "http://localhost:8080", changeOrigin: true, secure: false },
+      "/logout": { target: "http://localhost:8080", changeOrigin: true, secure: false },
+      // NOTE: OAuth login itself goes directly to :8080 (browser redirect, not fetch)
+      // so no proxy needed for /oauth2 — the browser handles it.
     },
   },
 });
