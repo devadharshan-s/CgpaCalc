@@ -135,7 +135,8 @@ function App() {
     setProfile(null);
     setAuthUser(null);
     window.localStorage.removeItem(PROFILE_KEY);
-    window.location.href = "http://localhost:8080/logout";
+      window.location.href =
+          `${import.meta.env.VITE_API_URL}/oauth2/authorization/google`;
   }
 
   const hasProfile = useMemo(() => Boolean(profile?.name), [profile]);
