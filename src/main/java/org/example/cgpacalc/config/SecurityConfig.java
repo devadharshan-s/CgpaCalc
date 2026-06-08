@@ -41,8 +41,7 @@ public class SecurityConfig {
                     "/login",
                     "/oauth2/**",
                     "/v3/api-docs/**",
-                    "/swagger-ui/**",
-                        "/https://cgpa-calc-ten.vercel.app/"
+                    "/swagger-ui/**"
                 ).permitAll()
                 // Protect all API routes — must be authenticated
                 .requestMatchers("/me", "/users/**", "/createUser").authenticated()
