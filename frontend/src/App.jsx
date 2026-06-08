@@ -128,7 +128,7 @@ function App() {
   function handleGoogleLogin() {
     // Redirect to Spring's OAuth2 authorization endpoint
       window.location.href =
-          `${API_URL}/oauth2/authorization/google`;
+          `${import.meta.env.VITE_API_URL}/oauth2/authorization/google`;
   }
 
   function handleLogout() {
