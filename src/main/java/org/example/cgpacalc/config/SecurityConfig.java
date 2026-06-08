@@ -16,10 +16,20 @@ public class SecurityConfig {
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
+    private String safeFrontendUrl() {
+        if (frontendUrl == null || frontendUrl.isBlank()) {
+            return "/";
+        }
+        if (frontendUrl.startsWith("http://") || frontendUrl.startsWith("https://") || frontendUrl.startsWith("/")) {
+            return frontendUrl;
+        }
+        return "/" + frontendUrl;
+    }
+
     @Bean
     public AuthenticationSuccessHandler oauthSuccessHandler() {
         return (request, response, authentication) -> {
-            response.sendRedirect(frontendUrl + "/oauth-callback");
+            response.sendRedirect(safeFrontendUrl() + "/oauth-callback");
         };
     }
 
@@ -46,7 +56,7 @@ public class SecurityConfig {
             )
             .logout(logout -> logout
                 .logoutUrl("/logout")
-                .logoutSuccessUrl(frontendUrl)
+                .logoutSuccessUrl(safeFrontendUrl())
                 .invalidateHttpSession(true)
                 .deleteCookies("JSESSIONID")
             );
