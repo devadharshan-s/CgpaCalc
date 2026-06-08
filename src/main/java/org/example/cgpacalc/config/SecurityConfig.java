@@ -29,7 +29,7 @@ public class SecurityConfig {
     @Bean
     public AuthenticationSuccessHandler oauthSuccessHandler() {
         return (request, response, authentication) -> {
-            response.sendRedirect(safeFrontendUrl() + "/oauth-callback");
+            response.sendRedirect(safeFrontendUrl());
         };
     }
 
