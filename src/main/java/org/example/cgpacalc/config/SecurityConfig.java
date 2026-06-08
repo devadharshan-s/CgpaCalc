@@ -1,5 +1,6 @@
 package org.example.cgpacalc.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -12,16 +13,13 @@ import org.springframework.security.web.authentication.AuthenticationSuccessHand
 @EnableWebSecurity
 public class SecurityConfig {
 
-    /**
-     * After Google OAuth succeeds, Spring redirects here.
-     * We redirect to the Vite dev frontend so it can call /me and bootstrap the session.
-     */
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
+
     @Bean
     public AuthenticationSuccessHandler oauthSuccessHandler() {
         return (request, response, authentication) -> {
-            // In dev, Vite runs on 5173. In production, same origin — just redirect to "/"
-            String redirectUrl = "http://localhost:5173/oauth-callback";
-            response.sendRedirect(redirectUrl);
+            response.sendRedirect(frontendUrl + "/oauth-callback");
         };
     }
 
@@ -30,7 +28,6 @@ public class SecurityConfig {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests(auth -> auth
-                // Public: OAuth redirect URIs, static assets, error page
                 .requestMatchers(
                     "/",
                     "/index.html",
@@ -43,7 +40,6 @@ public class SecurityConfig {
                     "/v3/api-docs/**",
                     "/swagger-ui/**"
                 ).permitAll()
-                // Protect all API routes — must be authenticated
                 .requestMatchers("/me", "/users/**", "/createUser").authenticated()
                 .anyRequest().authenticated()
             )
@@ -54,7 +50,7 @@ public class SecurityConfig {
             )
             .logout(logout -> logout
                 .logoutUrl("/logout")
-                .logoutSuccessUrl("http://localhost:5173")
+                .logoutSuccessUrl(frontendUrl)
                 .invalidateHttpSession(true)
                 .deleteCookies("JSESSIONID")
             );
