@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import LandingPage from "./pages/LandingPage";
 import ProfilePage from "./pages/ProfilePage";
-import { getMe, getProfile } from "./services/api";
+import { getProfile } from "./services/api";
 
 const PROFILE_KEY = "cgpa-tracker-profile";
 const API_URL = import.meta.env.VITE_API_URL || "https://cgpacalc-production.up.railway.app";
@@ -15,22 +15,42 @@ function readStoredProfile() {
   }
 }
 
+/**
+ * Reads ?profileId=&name=&email= from the URL after OAuth redirect.
+ * Returns the parsed params or null if not a callback.
+ */
+function readOAuthParams() {
+  const params = new URLSearchParams(window.location.search);
+  const profileId = params.get("profileId");
+  if (!profileId) return null;
+  return {
+    profileId: Number(profileId),
+    name:  decodeURIComponent(params.get("name")  || ""),
+    email: decodeURIComponent(params.get("email") || ""),
+  };
+}
+
 function App() {
-  const [route, setRoute] = useState("landing");
-  const [profile, setProfile] = useState(readStoredProfile);
-  const [authUser, setAuthUser] = useState(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [route, setRoute]               = useState("landing");
+  const [profile, setProfile]           = useState(readStoredProfile);
+  const [authUser, setAuthUser]         = useState(null);
+  const [loadingAuth, setLoadingAuth]   = useState(true);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
 
   useEffect(() => {
-    const isCallback = window.location.pathname === "/oauth-callback";
-    if (isCallback) {
+    const oauthParams = readOAuthParams();
+
+    if (oauthParams) {
+      // Coming back from Google OAuth — data is in the URL, no cookie needed
       setLoadingMessage("Signing you in...");
-      // Clean URL before React re-renders
+      // Clean the URL immediately so params don't persist on refresh
       window.history.replaceState({}, "", "/");
+      handleOAuthCallback(oauthParams);
+    } else {
+      // Normal load — just finish auth check immediately
+      setLoadingAuth(false);
     }
-    bootstrapAuth();
   }, []);
 
   useEffect(() => {
@@ -50,17 +70,15 @@ function App() {
     }
   }, [profile]);
 
-  async function bootstrapAuth() {
+  async function handleOAuthCallback({ profileId, name, email }) {
     setLoadingAuth(true);
+    const me = { name, email, profileId };
+    setAuthUser(me);
     try {
-      const me = await getMe();
-      if (me?.authenticated && me.profileId) {
-        setAuthUser(me);
-        await loadProfile(me.profileId, me);
-        window.location.hash = "profile";
-      }
+      await loadProfile(profileId, me);
+      window.location.hash = "profile";
     } catch {
-      // Not authenticated — show landing
+      // loadProfile handles its own fallback for new users
     } finally {
       setLoadingAuth(false);
     }
@@ -75,15 +93,15 @@ function App() {
       setProfile(data);
       return data;
     } catch (error) {
+      const status = error?.response?.status;
       const msg = error?.response?.data?.message || error.message || "Could not load profile";
-      setLoadingMessage(msg);
 
-      // New user with no semesters — show empty profile gracefully
-      if (msg.toLowerCase().includes("no semesters") || error?.response?.status === 404) {
+      // New user — graceful empty profile
+      if (status === 404 || msg.toLowerCase().includes("not found")) {
         const resolvedAuth = meData || authUser;
         const fallback = {
           id: Number(userId),
-          name: resolvedAuth?.name || `User ${userId}`,
+          name:  resolvedAuth?.name  || `User ${userId}`,
           email: resolvedAuth?.email || "",
           cgpa: null,
           semesters: [],
@@ -92,6 +110,8 @@ function App() {
         setLoadingMessage("");
         return fallback;
       }
+
+      setLoadingMessage(msg);
       throw error;
     } finally {
       setLoadingProfile(false);
@@ -143,7 +163,7 @@ function App() {
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
           <p className="text-sm text-slate-400">
-            {loadingMessage || "Checking session..."}
+            {loadingMessage || "Loading..."}
           </p>
         </div>
       </div>
