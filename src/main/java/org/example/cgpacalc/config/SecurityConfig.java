@@ -37,16 +37,13 @@ public class SecurityConfig {
             public void onAuthenticationSuccess(HttpServletRequest request,
                                                 HttpServletResponse response,
                                                 Authentication authentication) throws IOException {
-
                 OAuth2User oauthUser = (OAuth2User) authentication.getPrincipal();
                 String email = oauthUser.getAttribute("email");
                 String name  = oauthUser.getAttribute("name");
 
-                // Auto-create or fetch the user profile
                 ProfileDTO profile = userService.createUser(name, email);
 
-                // Encode profile data into the redirect URL as query params.
-                // This avoids cross-domain cookie issues entirely — no /me call needed.
+                // Pass profile data in the redirect URL — no cross-domain cookie needed
                 String redirectUrl = frontendUrl + "/oauth-callback"
                         + "?profileId=" + profile.getId()
                         + "&name="  + URLEncoder.encode(name  != null ? name  : "", StandardCharsets.UTF_8)
@@ -60,31 +57,23 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(AbstractHttpConfigurer::disable)
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(
-                    "/",
-                    "/error",
-                    "/login",
-                    "/oauth2/**",
-                    "/v3/api-docs/**",
-                    "/swagger-ui/**"
-                ).permitAll()
-                // /me is now optional — kept for session-based fallback
-                .requestMatchers("/me").permitAll()
-                .anyRequest().authenticated()
-            )
-            .formLogin(AbstractHttpConfigurer::disable)
-            .httpBasic(AbstractHttpConfigurer::disable)
-            .oauth2Login(oauth -> oauth
-                .successHandler(oauthSuccessHandler())
-            )
-            .logout(logout -> logout
-                .logoutUrl("/logout")
-                .logoutSuccessUrl(frontendUrl)
-                .invalidateHttpSession(true)
-                .deleteCookies("JSESSIONID")
-            );
+                .csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(auth -> auth
+                        // All API endpoints are open — auth is handled by profileId in URL params,
+                        // not by server-side sessions which don't work cross-domain.
+                        .anyRequest().permitAll()
+                )
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .oauth2Login(oauth -> oauth
+                        .successHandler(oauthSuccessHandler())
+                )
+                .logout(logout -> logout
+                        .logoutUrl("/logout")
+                        .logoutSuccessUrl(frontendUrl)
+                        .invalidateHttpSession(true)
+                        .deleteCookies("JSESSIONID")
+                );
 
         return http.build();
     }
