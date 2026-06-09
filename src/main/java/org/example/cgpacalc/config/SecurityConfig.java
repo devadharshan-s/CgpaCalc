@@ -72,7 +72,6 @@ public class SecurityConfig {
                 ).permitAll()
                 // /me is now optional — kept for session-based fallback
                 .requestMatchers("/me").permitAll()
-                .requestMatchers("/users/**", "/createUser").authenticated()
                 .anyRequest().authenticated()
             )
             .formLogin(AbstractHttpConfigurer::disable)
