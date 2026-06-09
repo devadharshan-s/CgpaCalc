@@ -1,10 +1,11 @@
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL;
+// Fallback to Railway URL directly if env var is missing
+const API_URL = import.meta.env.VITE_API_URL || "https://cgpacalc-production.up.railway.app";
 
 const api = axios.create({
-    baseURL: API_URL,
-    withCredentials: true,
+  baseURL: API_URL,
+  withCredentials: true,
 });
 
 export function getMe() {
@@ -28,8 +29,6 @@ export function updateSemester(userId, payload) {
 }
 
 export function deleteSemester(userId, semesterId) {
-  // Backend expects the DB row id as body — semesterId here is the semester number
-  // We pass it as a number in the request body
   return api
     .delete(`/users/${userId}/deleteSemester`, { data: semesterId })
     .then((r) => r.data);

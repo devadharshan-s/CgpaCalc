@@ -37,6 +37,7 @@ public class UserService {
 
         ProfileDTO profileDTO = new ProfileDTO();
 
+        profileDTO.setId(user.getId());
         profileDTO.setName(user.getName());
         profileDTO.setEmail(user.getEmail());
         profileDTO.setCgpa(cgpa);
