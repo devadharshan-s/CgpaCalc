@@ -3,6 +3,8 @@ package org.example.cgpacalc.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.example.cgpacalc.DTO.SemesterDTO;
+import org.example.cgpacalc.DTO.SemesterRequestDTO;
+import org.example.cgpacalc.DTO.SemesterSubjectSummaryDTO;
 import org.example.cgpacalc.model.Semester;
 import org.example.cgpacalc.model.Users;
 import org.example.cgpacalc.repo.SemesterRepository;
@@ -16,6 +18,7 @@ public class SemesterService {
 
     private final SemesterRepository semesterRepository;
     private final CheckUserIfExists checkUserIfExists;
+    private final StudentSubjectService studentSubjectService;
 
     private static final int MAX_SEMESTERS = 8;
 
@@ -27,17 +30,12 @@ public class SemesterService {
         List<Semester> semesters = semesterRepository.findByUserId(userId);
 
         return semesters.stream()
-                .map(s -> {
-                    SemesterDTO semesterDTO = new SemesterDTO();
-                    semesterDTO.setSemester(s.getSemester());
-                    semesterDTO.setSgpa(s.getSgpa());
-                    semesterDTO.setCredits(s.getCredits());
-                    return semesterDTO;
-                }).toList();
+                .map(s -> toSemesterDTO(userId, s))
+                .toList();
     }
 
     @Transactional
-    public SemesterDTO saveSemester(Long userId, SemesterDTO semester) {
+    public SemesterDTO saveSemester(Long userId, SemesterRequestDTO semester) {
         Users user = checkUserIfExists.checkUserIfExists(userId);
 
         // Enforce 8-semester cap
@@ -54,16 +52,15 @@ public class SemesterService {
         Semester newSemester = new Semester();
         newSemester.setSemester(semester.getSemester());
         newSemester.setCredits(semester.getCredits());
-        newSemester.setSgpa(semester.getSgpa());
         newSemester.setUser(user);
 
         semesterRepository.save(newSemester);
 
-        return semester;
+        return toSemesterDTO(userId, newSemester);
     }
 
     @Transactional
-    public SemesterDTO updateSemester(Long userId, SemesterDTO semester) {
+    public SemesterDTO updateSemester(Long userId, SemesterRequestDTO semester) {
         checkUserIfExists.checkUserIfExists(userId);
 
         if (!validateSemester((long) semester.getSemester())) {
@@ -74,16 +71,10 @@ public class SemesterService {
                 .orElseThrow(() -> new RuntimeException("Semester not found: " + semester.getSemester()));
 
         semToBeUpdated.setCredits(semester.getCredits());
-        semToBeUpdated.setSgpa(semester.getSgpa());
 
         Semester updated = semesterRepository.save(semToBeUpdated);
 
-        SemesterDTO semesterDTO = new SemesterDTO();
-        semesterDTO.setSemester(updated.getSemester());
-        semesterDTO.setSgpa(updated.getSgpa());
-        semesterDTO.setCredits(updated.getCredits());
-
-        return semesterDTO;
+        return toSemesterDTO(userId, updated);
     }
 
     @Transactional
@@ -102,5 +93,14 @@ public class SemesterService {
         }
 
         semesterRepository.delete(semester);
+    }
+
+    private SemesterDTO toSemesterDTO(Long userId, Semester semester) {
+        SemesterDTO semesterDTO = new SemesterDTO();
+        semesterDTO.setSemester(semester.getSemester());
+        SemesterSubjectSummaryDTO summary = studentSubjectService.getSummary(userId, semester.getSemester());
+        semesterDTO.setSgpa(summary.getSgpa());
+        semesterDTO.setCredits(summary.getCredits());
+        return semesterDTO;
     }
 }

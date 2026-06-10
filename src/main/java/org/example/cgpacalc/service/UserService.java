@@ -46,6 +46,7 @@ public class UserService {
         return profileDTO;
     }
 
+    @Transactional
     public ProfileDTO createUser(String username, String email){
         Optional<Users> user = usersRepository.findByEmail(email);
 
@@ -94,5 +95,8 @@ public class UserService {
         return userDTO;
     }
 
-
+    public Users getUser(Long userId){
+        return usersRepository.findById(userId)
+                .orElseThrow(() -> (new RuntimeException("User not found for the given UserId")));
+    }
 }

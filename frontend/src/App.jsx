@@ -1,61 +1,54 @@
 import { useEffect, useMemo, useState } from "react";
 import LandingPage from "./pages/LandingPage";
 import ProfilePage from "./pages/ProfilePage";
+import SemesterPage from "./pages/SemesterPage";
 import { getProfile } from "./services/api";
 
 const PROFILE_KEY = "cgpa-tracker-profile";
-const API_URL = import.meta.env.VITE_API_URL || "https://cgpacalc-production.up.railway.app";
+const API_URL = import.meta.env.VITE_API_URL || "https://cgpacalc-fc9e.onrender.com";
 
 function readStoredProfile() {
-  try {
-    const raw = window.localStorage.getItem(PROFILE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(window.localStorage.getItem(PROFILE_KEY) || "null"); }
+  catch { return null; }
 }
 
-/**
- * Reads ?profileId=&name=&email= from the URL after OAuth redirect.
- * Returns the parsed params or null if not a callback.
- */
 function readOAuthParams() {
-  const params = new URLSearchParams(window.location.search);
-  const profileId = params.get("profileId");
+  const p = new URLSearchParams(window.location.search);
+  const profileId = p.get("profileId");
   if (!profileId) return null;
   return {
     profileId: Number(profileId),
-    name:  decodeURIComponent(params.get("name")  || ""),
-    email: decodeURIComponent(params.get("email") || ""),
+    name:  decodeURIComponent(p.get("name")  || ""),
+    email: decodeURIComponent(p.get("email") || ""),
   };
 }
 
-function App() {
-  const [route, setRoute]               = useState("landing");
-  const [profile, setProfile]           = useState(readStoredProfile);
-  const [authUser, setAuthUser]         = useState(null);
-  const [loadingAuth, setLoadingAuth]   = useState(true);
+export default function App() {
+  // route: "landing" | "profile" | { semester: number }
+  const [route, setRoute]           = useState("landing");
+  const [profile, setProfile]       = useState(readStoredProfile);
+  const [authUser, setAuthUser]     = useState(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
 
   useEffect(() => {
-    const oauthParams = readOAuthParams();
-
-    if (oauthParams) {
-      // Coming back from Google OAuth — data is in the URL, no cookie needed
-      setLoadingMessage("Signing you in...");
-      // Clean the URL immediately so params don't persist on refresh
+    const params = readOAuthParams();
+    if (params) {
+      setLoadingMessage("Signing you in…");
       window.history.replaceState({}, "", "/");
-      handleOAuthCallback(oauthParams);
+      handleOAuthCallback(params);
     } else {
-      // Normal load — just finish auth check immediately
       setLoadingAuth(false);
     }
   }, []);
 
   useEffect(() => {
     const onHashChange = () => {
-      setRoute(window.location.hash === "#profile" ? "profile" : "landing");
+      const h = window.location.hash;
+      if (h === "#profile") setRoute("profile");
+      else if (h === "#landing" || h === "") setRoute("landing");
+      // semester routes use state directly
     };
     onHashChange();
     window.addEventListener("hashchange", onHashChange);
@@ -63,11 +56,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (profile) {
-      window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-    } else {
-      window.localStorage.removeItem(PROFILE_KEY);
-    }
+    if (profile) window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    else window.localStorage.removeItem(PROFILE_KEY);
   }, [profile]);
 
   async function handleOAuthCallback({ profileId, name, email }) {
@@ -77,11 +67,8 @@ function App() {
     try {
       await loadProfile(profileId, me);
       window.location.hash = "profile";
-    } catch {
-      // loadProfile handles its own fallback for new users
-    } finally {
-      setLoadingAuth(false);
-    }
+    } catch { /* loadProfile handles fallback */ }
+    finally { setLoadingAuth(false); }
   }
 
   async function loadProfile(userId, meData) {
@@ -95,53 +82,18 @@ function App() {
     } catch (error) {
       const status = error?.response?.status;
       const msg = error?.response?.data?.message || error.message || "Could not load profile";
-
-      // New user — graceful empty profile
       if (status === 404 || msg.toLowerCase().includes("not found")) {
-        const resolvedAuth = meData || authUser;
-        const fallback = {
-          id: Number(userId),
-          name:  resolvedAuth?.name  || `User ${userId}`,
-          email: resolvedAuth?.email || "",
-          cgpa: null,
-          semesters: [],
-        };
+        const resolved = meData || authUser;
+        const fallback = { id: Number(userId), name: resolved?.name || `User ${userId}`, email: resolved?.email || "", cgpa: null, semesters: [] };
         setProfile(fallback);
         setLoadingMessage("");
         return fallback;
       }
-
       setLoadingMessage(msg);
       throw error;
     } finally {
       setLoadingProfile(false);
     }
-  }
-
-  async function handleCreateUser(payload) {
-    const { createUser } = await import("./services/api");
-    const created = await createUser(payload);
-    if (created?.id) {
-      setProfile({
-        id: created.id,
-        name: payload.userName,
-        email: payload.email,
-        cgpa: null,
-        semesters: [],
-      });
-      window.location.hash = "profile";
-    }
-    return created;
-  }
-
-  async function handleOpenProfile(userId) {
-    const data = await loadProfile(userId);
-    if (data) window.location.hash = "profile";
-  }
-
-  async function handleRefreshProfile() {
-    const id = profile?.id;
-    if (id) await loadProfile(id);
   }
 
   function handleGoogleLogin() {
@@ -155,6 +107,15 @@ function App() {
     window.location.href = `${API_URL}/logout`;
   }
 
+  function handleOpenSemester(semNumber) {
+    setRoute({ semester: semNumber });
+  }
+
+  function handleBackFromSemester() {
+    window.location.hash = "profile";
+    setRoute("profile");
+  }
+
   const hasProfile = useMemo(() => Boolean(profile?.name), [profile]);
 
   if (loadingAuth) {
@@ -162,11 +123,21 @@ function App() {
       <div className="flex h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
-          <p className="text-sm text-slate-400">
-            {loadingMessage || "Loading..."}
-          </p>
+          <p className="text-sm text-slate-400">{loadingMessage || "Loading…"}</p>
         </div>
       </div>
+    );
+  }
+
+  // Semester detail route
+  if (route?.semester) {
+    return (
+      <SemesterPage
+        userId={profile?.id}
+        semesterNumber={route.semester}
+        onBack={handleBackFromSemester}
+        onRefresh={() => loadProfile(profile?.id)}
+      />
     );
   }
 
@@ -177,27 +148,21 @@ function App() {
         userId={profile?.id}
         authUser={authUser}
         onBack={() => { window.location.hash = "landing"; }}
-        onRefresh={handleRefreshProfile}
+        onRefresh={() => loadProfile(profile?.id)}
         onLogout={handleLogout}
         loading={loadingProfile}
+        onOpenSemester={handleOpenSemester}
       />
     );
   }
 
   return (
     <LandingPage
-      profile={profile}
-      userId={profile?.id}
       authUser={authUser}
-      loading={loadingProfile}
-      loadingMessage={loadingMessage}
+      profile={profile}
       hasProfile={hasProfile}
-      onCreateUser={handleCreateUser}
-      onOpenProfile={handleOpenProfile}
       onGoogleLogin={handleGoogleLogin}
       onLogout={handleLogout}
     />
   );
 }
-
-export default App;

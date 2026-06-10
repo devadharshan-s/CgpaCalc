@@ -22,8 +22,5 @@ public class Semester {
     private Users user;
 
     @Column(nullable = false)
-    private double sgpa;
-
-    @Column(nullable = false)
     private int credits;
 }

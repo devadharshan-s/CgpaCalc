@@ -6,15 +6,13 @@ import jakarta.validation.constraints.Positive;
 import lombok.Getter;
 import lombok.Setter;
 
-@Getter @Setter
-public class SemesterDTO {
+@Getter
+@Setter
+public class SemesterRequestDTO {
 
     @Min(value = 1, message = "Semester must be greater than 0")
     @Max(value = 8, message = "Maximum 8 semesters allowed")
     private Integer semester;
-
-    // sgpa is computed from subjects, not provided by client — no validation needed
-    private Double sgpa;
 
     @Positive(message = "Credits must be greater than 0")
     private Integer credits;

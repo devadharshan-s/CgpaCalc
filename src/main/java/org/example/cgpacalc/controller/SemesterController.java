@@ -2,6 +2,7 @@ package org.example.cgpacalc.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.example.cgpacalc.DTO.SemesterDTO;
+import org.example.cgpacalc.DTO.SemesterRequestDTO;
 import org.example.cgpacalc.service.SemesterService;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,12 +13,12 @@ public class SemesterController {
     private final SemesterService semesterService;
 
     @PostMapping("/users/{userId}/semester")
-    public SemesterDTO saveSemester(@PathVariable Long userId, @RequestBody SemesterDTO semester){
+    public SemesterDTO saveSemester(@PathVariable Long userId, @RequestBody SemesterRequestDTO semester){
         return semesterService.saveSemester(userId, semester);
     }
 
     @PatchMapping("/users/{userId}/updateSemester")
-    public SemesterDTO updateSemester(@PathVariable Long userId, @RequestBody SemesterDTO semester){
+    public SemesterDTO updateSemester(@PathVariable Long userId, @RequestBody SemesterRequestDTO semester){
         return semesterService.updateSemester(userId, semester);
     }
 
