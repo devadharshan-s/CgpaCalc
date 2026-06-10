@@ -3,6 +3,7 @@ package org.example.cgpacalc.repo;
 import org.example.cgpacalc.model.StudentSubject;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -37,4 +38,8 @@ public interface StudentSubjectRepository extends JpaRepository<StudentSubject,L
 
     @Query("select case when count(ss) > 0 then true else false end from StudentSubject ss where ss.subject.subjectId = :subjectId")
     boolean existsBySubjectId(@Param("subjectId") int subjectId);
+
+    @Modifying
+    @Query("delete from StudentSubject ss where ss.semester.id = :semesterId")
+    void deleteBySemesterId(@Param("semesterId") Long semesterId);
 }

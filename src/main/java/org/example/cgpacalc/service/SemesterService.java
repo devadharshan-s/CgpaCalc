@@ -92,6 +92,7 @@ public class SemesterService {
             throw new RuntimeException("Semester doesn't belong to this user!");
         }
 
+        studentSubjectService.deleteAllForSemester(semester.getId());
         semesterRepository.delete(semester);
     }
 

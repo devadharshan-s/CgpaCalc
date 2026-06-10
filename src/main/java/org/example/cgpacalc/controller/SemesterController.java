@@ -23,7 +23,7 @@ public class SemesterController {
     }
 
     @DeleteMapping("/users/{userId}/deleteSemester")
-    public String deleteSemester(@PathVariable Long userId, @RequestBody Long semesterId){
+    public String deleteSemester(@PathVariable Long userId, @RequestBody(required = false) Long semesterId){
         semesterService.deleteSemester(userId, semesterId);
         return "Semester deleted successfully!";
     }

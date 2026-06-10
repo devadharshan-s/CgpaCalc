@@ -90,6 +90,11 @@ public class StudentSubjectService {
         return summary.getSgpa();
     }
 
+    @Transactional
+    public void deleteAllForSemester(Long semesterId) {
+        studentSubjectRepository.deleteBySemesterId(semesterId);
+    }
+
     private SemesterSubjectSummaryDTO recalculateSemester(Long userId, Semester semester) {
         List<StudentSubject> entries = studentSubjectRepository.findByUserIdAndSemesterIdOrderByIdAsc(
                 userId, semester.getId());
