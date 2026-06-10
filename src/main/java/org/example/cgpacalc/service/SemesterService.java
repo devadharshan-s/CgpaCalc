@@ -26,12 +26,13 @@ public class SemesterService {
         return semesterId != null && semesterId > 0 && semesterId <= MAX_SEMESTERS;
     }
 
-    public List<SemesterDTO> findAllSemesterByUserId(Long userId) {
+    public List<Semester> findAllSemesterByUserId(Long userId) {
         List<Semester> semesters = semesterRepository.findByUserId(userId);
 
-        return semesters.stream()
-                .map(s -> toSemesterDTO(userId, s))
-                .toList();
+        return semesters;
+//        return semesters.stream()
+//                .map(s -> toSemesterDTO(userId, s))
+//                .toList();
     }
 
     @Transactional

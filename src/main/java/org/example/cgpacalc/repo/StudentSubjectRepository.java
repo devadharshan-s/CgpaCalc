@@ -42,4 +42,6 @@ public interface StudentSubjectRepository extends JpaRepository<StudentSubject,L
     @Modifying
     @Query("delete from StudentSubject ss where ss.semester.id = :semesterId")
     void deleteBySemesterId(@Param("semesterId") Long semesterId);
+
+    List<StudentSubject> findAllBySemesterId(Long semesterId);
 }
