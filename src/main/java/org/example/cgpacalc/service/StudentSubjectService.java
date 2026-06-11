@@ -169,7 +169,8 @@ public class StudentSubjectService {
                 });
     }
 
-    private Semester getSemesterOrThrow(Long userId, int semesterNumber) {
+    private Semester
+    getSemesterOrThrow(Long userId, int semesterNumber) {
         validateSemesterNumber(semesterNumber);
         checkUserIfExists.checkUserIfExists(userId);
         return semesterRepository.findByUserIdAndSemester(userId, semesterNumber)

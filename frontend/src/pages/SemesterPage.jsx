@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useCallback } from "react";
 import {
   getSemesterSummary,
   addSubjectToSemester,
@@ -8,61 +8,108 @@ import {
   createSubject,
 } from "../services/api";
 
-// Enum grades exactly matching backend Grade enum
+// ── Grade config ───────────────────────────────────────────
 const GRADES = [
-  { value: "O",      label: "O",  desc: "Outstanding", points: 10, color: "#fbbf24" },
-  { value: "A_PLUS", label: "A+", desc: "Excellent",   points: 9,  color: "#34d399" },
-  { value: "A",      label: "A",  desc: "Very Good",   points: 8,  color: "#60a5fa" },
-  { value: "B_PLUS", label: "B+", desc: "Good",        points: 7,  color: "#a78bfa" },
-  { value: "B",      label: "B",  desc: "Average",     points: 6,  color: "#f97316" },
-  { value: "C",      label: "C",  desc: "Satisfactory",points: 5,  color: "#94a3b8" },
-  { value: "U",      label: "U",  desc: "Failed",      points: 0,  color: "#fb7185" },
+  { value: "O",      label: "O",  desc: "Outstanding",  points: 10, color: "#fbbf24" },
+  { value: "A_PLUS", label: "A+", desc: "Excellent",    points: 9,  color: "#34d399" },
+  { value: "A",      label: "A",  desc: "Very Good",    points: 8,  color: "#60a5fa" },
+  { value: "B_PLUS", label: "B+", desc: "Good",         points: 7,  color: "#a78bfa" },
+  { value: "B",      label: "B",  desc: "Average",      points: 6,  color: "#f97316" },
+  { value: "C",      label: "C",  desc: "Satisfactory", points: 5,  color: "#94a3b8" },
+  { value: "U",      label: "U",  desc: "Failed",       points: 0,  color: "#fb7185" },
 ];
 
+// ── Local state machine ────────────────────────────────────
+const LOCAL_INIT = {
+  summary: null,
+  allSubjects: [],
+  loading: true,
+  error: "",
+  modal: null,          // null | { mode: "add"|"edit", entry?: StudentSubjectResponseDTO }
+  subjectId: "",
+  grade: "O",
+  busy: false,
+  modalError: "",
+  newSubject: { open: false, name: "", credits: "", busy: false },
+  deleteTarget: null,
+  deleteBusy: false,
+};
+
+function localReducer(s, a) {
+  switch (a.type) {
+    case "LOAD_START":  return { ...s, loading: true, error: "" };
+    case "LOAD_DONE":   return { ...s, loading: false, summary: a.summary, allSubjects: a.subjects, error: "" };
+    case "LOAD_ERROR":  return { ...s, loading: false, error: a.error };
+    case "SUBJECTS_UPDATED": return { ...s, allSubjects: a.subjects };
+
+    case "OPEN_ADD":
+      return { ...s, modal: { mode: "add" }, subjectId: a.firstAvailable ?? "", grade: "O", modalError: "", newSubject: LOCAL_INIT.newSubject };
+    case "OPEN_EDIT":
+      return { ...s, modal: { mode: "edit", entry: a.entry }, subjectId: String(a.entry.subject.subjectId), grade: a.entry.grade, modalError: "", newSubject: LOCAL_INIT.newSubject };
+    case "CLOSE_MODAL": return { ...s, modal: null, modalError: "", newSubject: LOCAL_INIT.newSubject };
+
+    case "SET_SUBJECT":  return { ...s, subjectId: a.value };
+    case "SET_GRADE":    return { ...s, grade: a.value };
+    case "SET_MODAL_ERROR": return { ...s, modalError: a.error };
+
+    case "BUSY_START":  return { ...s, busy: true, modalError: "" };
+    case "BUSY_END":    return { ...s, busy: false };
+
+    // Summary updated (after add/edit/delete subject)
+    case "SUMMARY_UPDATED": return { ...s, summary: a.summary, modal: null, busy: false, modalError: "" };
+
+    // Optimistic subject delete from table
+    case "SUBJECT_DELETED_OPTIMISTIC": {
+      if (!s.summary) return s;
+      const subjects = s.summary.subjects.filter((e) => e.id !== a.id);
+      return { ...s, summary: { ...s.summary, subjects }, deleteTarget: null };
+    }
+    case "SET_DELETE_TARGET": return { ...s, deleteTarget: a.entry };
+    case "DELETE_BUSY_START": return { ...s, deleteBusy: true };
+    case "DELETE_BUSY_END":   return { ...s, deleteBusy: false };
+
+    case "NEW_SUBJECT_TOGGLE": return { ...s, newSubject: { ...LOCAL_INIT.newSubject, open: !s.newSubject.open } };
+    case "NEW_SUBJECT_SET":    return { ...s, newSubject: { ...s.newSubject, ...a.patch } };
+
+    default: return s;
+  }
+}
+
+// ── Sub-components ─────────────────────────────────────────
 function GradePill({ value, selected, onClick }) {
   const g = GRADES.find((g) => g.value === value) || GRADES[0];
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <button type="button" onClick={onClick}
       className="flex flex-col items-center rounded-xl px-3 py-2 text-xs font-bold transition-all"
       style={{
         background: selected ? `${g.color}22` : "rgba(255,255,255,0.04)",
         border: selected ? `2px solid ${g.color}` : "2px solid rgba(255,255,255,0.07)",
         color: selected ? g.color : "#64748b",
         minWidth: 44,
-      }}
-    >
+      }}>
       <span className="text-sm">{g.label}</span>
-      <span className="text-[10px] mt-0.5 font-normal opacity-75">{g.points} pts</span>
+      <span className="text-[10px] mt-0.5 font-normal opacity-75">{g.points}pts</span>
     </button>
   );
 }
 
 function SgpaRing({ sgpa }) {
-  const pct = Math.min(100, (sgpa / 10) * 100);
-  const r = 36;
-  const circ = 2 * Math.PI * r;
-  const color =
-    sgpa >= 9 ? "#fbbf24" : sgpa >= 8 ? "#34d399" : sgpa >= 7 ? "#60a5fa" : sgpa >= 6 ? "#a78bfa" : "#fb7185";
-
+  const v = Number(sgpa) || 0;
+  const pct = Math.min(100, (v / 10) * 100);
+  const r = 36, circ = 2 * Math.PI * r;
+  const color = v >= 9 ? "#fbbf24" : v >= 8 ? "#34d399" : v >= 7 ? "#60a5fa" : v >= 6 ? "#a78bfa" : v > 0 ? "#fb7185" : "#1e293b";
   return (
     <div className="relative inline-flex items-center justify-center">
       <svg width="90" height="90" viewBox="0 0 90 90">
         <circle cx="45" cy="45" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="7" />
-        <circle
-          cx="45" cy="45" r={r} fill="none"
-          stroke={color} strokeWidth="7"
-          strokeDasharray={circ}
-          strokeDashoffset={circ * (1 - pct / 100)}
-          strokeLinecap="round"
-          transform="rotate(-90 45 45)"
-          style={{ transition: "stroke-dashoffset 0.5s ease" }}
-        />
+        <circle cx="45" cy="45" r={r} fill="none" stroke={color} strokeWidth="7"
+          strokeDasharray={circ} strokeDashoffset={circ * (1 - pct / 100)}
+          strokeLinecap="round" transform="rotate(-90 45 45)"
+          style={{ transition: "stroke-dashoffset 0.5s ease" }} />
       </svg>
       <div className="absolute flex flex-col items-center">
         <span className="text-xl font-bold text-white" style={{ fontFamily: "Syne,sans-serif" }}>
-          {sgpa > 0 ? sgpa.toFixed(2) : "--"}
+          {v > 0 ? v.toFixed(2) : "--"}
         </span>
         <span className="text-[10px] text-slate-500 uppercase tracking-wider">SGPA</span>
       </div>
@@ -70,146 +117,123 @@ function SgpaRing({ sgpa }) {
   );
 }
 
-export default function SemesterPage({ userId, semesterNumber, onBack, onRefresh }) {
-  const [summary, setSummary] = useState(null);
-  const [allSubjects, setAllSubjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+// ── Main page ──────────────────────────────────────────────
+export default function SemesterPage({
+  userId, semesterNumber, cachedSummary,
+  onBack, onSummaryUpdated, cacheSemesterSummary,
+}) {
+  const [s, dispatch] = useReducer(localReducer, {
+    ...LOCAL_INIT,
+    summary: cachedSummary ?? null,
+    loading: !cachedSummary,
+  });
 
-  // Add/Edit modal state
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null); // studentSubjectId
-  const [selectedSubjectId, setSelectedSubjectId] = useState("");
-  const [selectedGrade, setSelectedGrade] = useState("O");
-  const [busy, setBusy] = useState(false);
-  const [modalError, setModalError] = useState("");
+  const addedIds = new Set(s.summary?.subjects?.map((e) => e.subject.subjectId) ?? []);
+  const available = s.allSubjects.filter((sub) => !addedIds.has(sub.subjectId));
 
-  // New custom subject inline form
-  const [showNewSubject, setShowNewSubject] = useState(false);
-  const [newSubjectName, setNewSubjectName] = useState("");
-  const [newSubjectCredits, setNewSubjectCredits] = useState("");
-  const [newSubjectBusy, setNewSubjectBusy] = useState(false);
-
-  // Delete confirm
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-
-  useEffect(() => {
-    fetchAll();
-  }, [userId, semesterNumber]);
-
-  async function fetchAll() {
-    setLoading(true);
+  // ── Fetch ──────────────────────────────────────────────
+  const fetchAll = useCallback(async () => {
+    dispatch({ type: "LOAD_START" });
     try {
-      const [sum, subs] = await Promise.all([
-        getSemesterSummary(userId, semesterNumber).catch(() => null),
+      const [summary, subjects] = await Promise.all([
+        getSemesterSummary(userId, semesterNumber).catch(() => ({
+          userId, semester: semesterNumber, sgpa: 0, credits: 0, subjects: [],
+        })),
         listSubjects(),
       ]);
-      setSummary(sum);
-      setAllSubjects(subs);
+      dispatch({ type: "LOAD_DONE", summary, subjects });
+      cacheSemesterSummary(semesterNumber, summary);
     } catch (e) {
-      setError(e?.response?.data?.message || e.message || "Failed to load");
-    } finally {
-      setLoading(false);
+      dispatch({ type: "LOAD_ERROR", error: e?.response?.data?.message || e.message });
+    }
+  }, [userId, semesterNumber]);
+
+  useEffect(() => {
+    if (!cachedSummary) {
+      fetchAll();
+    } else {
+      // Still fetch subject master list even if summary is cached
+      listSubjects().then((subjects) => {
+        dispatch({ type: "SUBJECTS_UPDATED", subjects });
+        dispatch({ type: "LOAD_DONE", summary: cachedSummary, subjects });
+      });
+    }
+  }, [userId, semesterNumber]);
+
+  // ── Subject CRUD ──────────────────────────────────────
+  async function handleSave() {
+    if (!s.subjectId) { dispatch({ type: "SET_MODAL_ERROR", error: "Pick a subject" }); return; }
+    dispatch({ type: "BUSY_START" });
+    try {
+      const payload = { subjectId: Number(s.subjectId), grade: s.grade };
+      let updatedSummary;
+      if (s.modal?.mode === "edit") {
+        updatedSummary = await updateSubjectInSemester(userId, semesterNumber, s.modal.entry.id, payload);
+      } else {
+        updatedSummary = await addSubjectToSemester(userId, semesterNumber, payload);
+      }
+      dispatch({ type: "SUMMARY_UPDATED", summary: updatedSummary });
+      onSummaryUpdated(semesterNumber, updatedSummary);
+    } catch (e) {
+      dispatch({ type: "BUSY_END" });
+      dispatch({ type: "SET_MODAL_ERROR", error: e?.response?.data?.message || e.message || "Could not save" });
     }
   }
 
-  // Subjects not yet added this semester
-  const addedSubjectIds = new Set(summary?.subjects?.map((s) => s.subject.subjectId) ?? []);
-  const availableSubjects = allSubjects.filter((s) => !addedSubjectIds.has(s.subjectId));
-
-  function openAdd() {
-    setEditingId(null);
-    setSelectedSubjectId(availableSubjects[0]?.subjectId ?? "");
-    setSelectedGrade("O");
-    setModalError("");
-    setShowNewSubject(false);
-    setModalOpen(true);
-  }
-
-  function openEdit(entry) {
-    setEditingId(entry.id);
-    setSelectedSubjectId(entry.subject.subjectId);
-    setSelectedGrade(entry.grade);
-    setModalError("");
-    setShowNewSubject(false);
-    setModalOpen(true);
-  }
-
-  async function handleSave() {
-    if (!selectedSubjectId) { setModalError("Pick a subject"); return; }
-    if (!selectedGrade)    { setModalError("Pick a grade");   return; }
-    setBusy(true);
-    setModalError("");
+  async function handleDeleteSubject() {
+    if (!s.deleteTarget) return;
+    dispatch({ type: "DELETE_BUSY_START" });
+    // Optimistic removal from table
+    dispatch({ type: "SUBJECT_DELETED_OPTIMISTIC", id: s.deleteTarget.id });
     try {
-      const payload = { subjectId: Number(selectedSubjectId), grade: selectedGrade };
-      if (editingId) {
-        await updateSubjectInSemester(userId, semesterNumber, editingId, payload);
-      } else {
-        await addSubjectToSemester(userId, semesterNumber, payload);
-      }
-      setModalOpen(false);
-      await fetchAll();
-      onRefresh?.();
+      const updatedSummary = await deleteSubjectFromSemester(userId, semesterNumber, s.deleteTarget.id);
+      dispatch({ type: "SUMMARY_UPDATED", summary: updatedSummary });
+      onSummaryUpdated(semesterNumber, updatedSummary);
     } catch (e) {
-      setModalError(e?.response?.data?.message || e.message || "Could not save");
+      // Rollback: refetch
+      await fetchAll();
+      dispatch({ type: "LOAD_ERROR", error: e?.response?.data?.message || e.message || "Delete failed" });
     } finally {
-      setBusy(false);
+      dispatch({ type: "DELETE_BUSY_END" });
     }
   }
 
   async function handleCreateSubject() {
-    if (!newSubjectName.trim() || !newSubjectCredits) return;
-    setNewSubjectBusy(true);
+    const { name, credits } = s.newSubject;
+    if (!name.trim() || !credits) return;
+    dispatch({ type: "NEW_SUBJECT_SET", patch: { busy: true } });
     try {
-      const created = await createSubject({ name: newSubjectName.trim(), credits: Number(newSubjectCredits) });
-      setAllSubjects((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
-      setSelectedSubjectId(created.subjectId);
-      setShowNewSubject(false);
-      setNewSubjectName("");
-      setNewSubjectCredits("");
+      const created = await createSubject({ name: name.trim(), credits: Number(credits) });
+      const newList = [...s.allSubjects, created].sort((a, b) => a.name.localeCompare(b.name));
+      dispatch({ type: "SUBJECTS_UPDATED", subjects: newList });
+      dispatch({ type: "SET_SUBJECT", value: String(created.subjectId) });
+      dispatch({ type: "NEW_SUBJECT_SET", patch: { open: false, name: "", credits: "", busy: false } });
     } catch (e) {
-      setModalError(e?.response?.data?.message || e.message || "Could not create subject");
-    } finally {
-      setNewSubjectBusy(false);
+      dispatch({ type: "SET_MODAL_ERROR", error: e?.response?.data?.message || e.message });
+      dispatch({ type: "NEW_SUBJECT_SET", patch: { busy: false } });
     }
   }
 
-  async function handleDeleteConfirm() {
-    if (!deleteTarget) return;
-    setDeleteBusy(true);
-    try {
-      await deleteSubjectFromSemester(userId, semesterNumber, deleteTarget.id);
-      setDeleteTarget(null);
-      await fetchAll();
-      onRefresh?.();
-    } catch (e) {
-      setError(e?.response?.data?.message || e.message || "Could not delete");
-      setDeleteTarget(null);
-    } finally {
-      setDeleteBusy(false);
-    }
-  }
-
-  const sgpa = summary?.sgpa ?? 0;
-  const totalCredits = summary?.credits ?? 0;
-  const subjects = summary?.subjects ?? [];
+  const sgpa = s.summary?.sgpa ?? 0;
+  const credits = s.summary?.credits ?? 0;
+  const subjects = s.summary?.subjects ?? [];
+  const isEditMode = s.modal?.mode === "edit";
 
   return (
     <div className="app-shell">
-      {/* Header */}
       <header className="mb-6 flex items-center justify-between gap-4">
-        <button type="button" onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
+        <button type="button" onClick={onBack}
+          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
           <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
             <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          <span className="text-sm">Back to Dashboard</span>
+          <span className="text-sm">Dashboard</span>
         </button>
         <span className="section-kicker">Semester {semesterNumber}</span>
       </header>
 
       <main className="space-y-6 animate-in">
-        {/* SGPA hero card */}
+        {/* SGPA hero */}
         <section className="hero-card">
           <div className="flex flex-wrap items-center gap-6">
             <SgpaRing sgpa={sgpa} />
@@ -219,9 +243,9 @@ export default function SemesterPage({ userId, semesterNumber, onBack, onRefresh
               </h1>
               <div className="mt-3 flex flex-wrap gap-3">
                 <div className="stat-chip">
-                  <p className="metric-label">Total Credits</p>
+                  <p className="metric-label">Credits</p>
                   <p className="mt-0.5 text-lg font-bold text-white" style={{ fontFamily: "Syne,sans-serif" }}>
-                    {totalCredits > 0 ? totalCredits : "--"}
+                    {credits > 0 ? credits : "--"}
                   </p>
                 </div>
                 <div className="stat-chip">
@@ -234,7 +258,8 @@ export default function SemesterPage({ userId, semesterNumber, onBack, onRefresh
             </div>
           </div>
           <div className="mt-5">
-            <button type="button" onClick={openAdd} className="button-primary" disabled={loading}>
+            <button type="button" className="button-primary" disabled={s.loading}
+              onClick={() => dispatch({ type: "OPEN_ADD", firstAvailable: available[0]?.subjectId ?? "" })}>
               + Add Subject
             </button>
           </div>
@@ -243,29 +268,29 @@ export default function SemesterPage({ userId, semesterNumber, onBack, onRefresh
         {/* Subjects table */}
         <section className="glass-card">
           <h2 className="card-title mb-4">Subjects & Grades</h2>
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
+          {s.loading ? (
+            <div className="flex justify-center py-12">
               <div className="h-7 w-7 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
             </div>
           ) : subjects.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl"
-                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                <span className="text-2xl">📖</span>
-              </div>
-              <p className="text-sm text-slate-400">No subjects yet for this semester</p>
-              <button type="button" onClick={openAdd} className="button-primary mt-1">+ Add your first subject</button>
+              <span className="text-4xl">📖</span>
+              <p className="text-sm text-slate-400">No subjects yet</p>
+              <button type="button" className="button-primary mt-1"
+                onClick={() => dispatch({ type: "OPEN_ADD", firstAvailable: available[0]?.subjectId ?? "" })}>
+                + Add your first subject
+              </button>
             </div>
           ) : (
             <div className="overflow-hidden rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
               <table className="w-full border-collapse text-left text-sm">
                 <thead>
                   <tr style={{ background: "rgba(255,255,255,0.03)" }}>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Subject</th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Credits</th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Grade</th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Points</th>
-                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 text-right">Actions</th>
+                    {["Subject", "Credits", "Grade", "Points", ""].map((h) => (
+                      <th key={h} className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        {h}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -287,10 +312,11 @@ export default function SemesterPage({ userId, semesterNumber, onBack, onRefresh
                         <td className="px-4 py-3 text-slate-400">{entry.gradePoints}</td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <button type="button" onClick={() => openEdit(entry)}
-                              className="button-ghost py-1.5 text-xs">Edit</button>
-                            <button type="button" onClick={() => setDeleteTarget(entry)}
-                              className="button-ghost py-1.5 text-xs text-rose-400 hover:text-rose-300">Delete</button>
+                            <button type="button" className="button-ghost py-1.5 text-xs"
+                              onClick={() => dispatch({ type: "OPEN_EDIT", entry })}>Edit</button>
+                            <button type="button"
+                              className="button-ghost py-1.5 text-xs text-rose-400 hover:text-rose-300"
+                              onClick={() => dispatch({ type: "SET_DELETE_TARGET", entry })}>Delete</button>
                           </div>
                         </td>
                       </tr>
@@ -299,8 +325,8 @@ export default function SemesterPage({ userId, semesterNumber, onBack, onRefresh
                 </tbody>
                 <tfoot>
                   <tr style={{ borderTop: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
-                    <td className="px-4 py-3 text-xs font-semibold text-slate-400">Total / SGPA</td>
-                    <td className="px-4 py-3 text-xs font-semibold text-white">{totalCredits} cr</td>
+                    <td className="px-4 py-3 text-xs font-semibold text-slate-400" colSpan={1}>Total / SGPA</td>
+                    <td className="px-4 py-3 text-xs font-semibold text-white">{credits} cr</td>
                     <td className="px-4 py-3" colSpan={2}>
                       <span className="text-sm font-bold" style={{ color: "#fbbf24", fontFamily: "Syne,sans-serif" }}>
                         {sgpa > 0 ? sgpa.toFixed(2) : "--"}
@@ -312,90 +338,83 @@ export default function SemesterPage({ userId, semesterNumber, onBack, onRefresh
               </table>
             </div>
           )}
-          {error && (
+          {s.error && (
             <div className="mt-4 rounded-xl p-3 text-sm text-rose-300"
               style={{ background: "rgba(251,113,133,0.08)", border: "1px solid rgba(251,113,133,0.15)" }}>
-              {error}
+              {s.error}
             </div>
           )}
         </section>
       </main>
 
       {/* Add / Edit Modal */}
-      {modalOpen && (
+      {s.modal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-4 pb-4 sm:pb-0"
           style={{ background: "rgba(4,8,16,0.85)", backdropFilter: "blur(12px)" }}
-          onClick={(e) => { if (e.target === e.currentTarget) setModalOpen(false); }}>
+          onClick={(e) => { if (e.target === e.currentTarget && !s.busy) dispatch({ type: "CLOSE_MODAL" }); }}>
           <div className="w-full max-w-md animate-in"
             style={{
-              background: "linear-gradient(135deg, rgba(13,22,40,0.98), rgba(8,15,30,0.98))",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: "20px", padding: "24px",
-              boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
+              background: "linear-gradient(135deg,rgba(13,22,40,0.98),rgba(8,15,30,0.98))",
+              border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px",
+              padding: "24px", boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
             }}>
             <div className="mb-5 flex items-center justify-between">
               <div>
-                <h2 className="card-title">{editingId ? "Edit Subject" : "Add Subject"}</h2>
+                <h2 className="card-title">{isEditMode ? "Edit Subject" : "Add Subject"}</h2>
                 <p className="card-subtitle">Semester {semesterNumber}</p>
               </div>
-              <button type="button" onClick={() => setModalOpen(false)}
-                className="button-ghost h-8 w-8 rounded-full p-0 text-slate-400" style={{ fontSize: 18 }}>✕</button>
+              <button type="button" onClick={() => dispatch({ type: "CLOSE_MODAL" })} disabled={s.busy}
+                className="button-ghost h-8 w-8 rounded-full text-slate-400" style={{ fontSize: 18 }}>✕</button>
             </div>
 
             <div className="space-y-5">
-              {/* Subject picker */}
+              {/* Subject selector */}
               <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest text-slate-500">
                   Subject
                 </label>
                 <select
-                  value={selectedSubjectId}
-                  onChange={(e) => setSelectedSubjectId(e.target.value)}
+                  value={s.subjectId}
+                  onChange={(e) => dispatch({ type: "SET_SUBJECT", value: e.target.value })}
                   className="input-field"
-                  style={{ cursor: "pointer" }}
-                  disabled={!!editingId}
-                >
+                  disabled={isEditMode}
+                  style={{ cursor: isEditMode ? "not-allowed" : "pointer" }}>
                   <option value="" disabled>Select a subject…</option>
-                  {(editingId
-                    ? allSubjects.filter(s => s.subjectId === selectedSubjectId || !addedSubjectIds.has(s.subjectId))
-                    : availableSubjects
-                  ).map((s) => (
-                    <option key={s.subjectId} value={s.subjectId}>
-                      {s.name} ({s.credits} cr)
+                  {(isEditMode
+                    ? s.allSubjects.filter(sub => sub.subjectId === Number(s.subjectId) || !addedIds.has(sub.subjectId))
+                    : available
+                  ).map((sub) => (
+                    <option key={sub.subjectId} value={sub.subjectId}>
+                      {sub.name} ({sub.credits} cr)
                     </option>
                   ))}
                 </select>
 
-                {/* Add new subject inline */}
-                {!editingId && (
+                {!isEditMode && (
                   <button type="button"
-                    onClick={() => setShowNewSubject((v) => !v)}
-                    className="mt-2 text-xs text-amber-400 hover:text-amber-300 transition-colors">
-                    {showNewSubject ? "− Cancel new subject" : "+ Subject not in list? Add it"}
+                    className="mt-2 text-xs text-amber-400 hover:text-amber-300 transition-colors"
+                    onClick={() => dispatch({ type: "NEW_SUBJECT_TOGGLE" })}>
+                    {s.newSubject.open ? "− Cancel" : "+ Not in list? Add it"}
                   </button>
                 )}
 
-                {showNewSubject && (
+                {s.newSubject.open && (
                   <div className="mt-3 space-y-2 rounded-xl p-3"
                     style={{ background: "rgba(251,191,36,0.05)", border: "1px solid rgba(251,191,36,0.15)" }}>
                     <p className="text-xs font-semibold text-amber-400 mb-2">New subject</p>
                     <input
-                      value={newSubjectName}
-                      onChange={(e) => setNewSubjectName(e.target.value)}
-                      className="input-field text-sm"
-                      placeholder="Subject name e.g. Data Structures"
-                    />
+                      value={s.newSubject.name}
+                      onChange={(e) => dispatch({ type: "NEW_SUBJECT_SET", patch: { name: e.target.value } })}
+                      className="input-field text-sm" placeholder="Subject name e.g. Data Structures" />
                     <div className="flex gap-2">
-                      <input
-                        type="number" min="1" max="10"
-                        value={newSubjectCredits}
-                        onChange={(e) => setNewSubjectCredits(e.target.value)}
-                        className="input-field text-sm flex-1"
-                        placeholder="Credits"
-                      />
-                      <button type="button" onClick={handleCreateSubject} disabled={newSubjectBusy || !newSubjectName.trim() || !newSubjectCredits}
+                      <input type="number" min="1" max="10"
+                        value={s.newSubject.credits}
+                        onChange={(e) => dispatch({ type: "NEW_SUBJECT_SET", patch: { credits: e.target.value } })}
+                        className="input-field text-sm flex-1" placeholder="Credits" />
+                      <button type="button" onClick={handleCreateSubject}
+                        disabled={s.newSubject.busy || !s.newSubject.name.trim() || !s.newSubject.credits}
                         className="button-primary px-4 text-xs">
-                        {newSubjectBusy ? "…" : "Add"}
+                        {s.newSubject.busy ? "…" : "Add"}
                       </button>
                     </div>
                   </div>
@@ -409,34 +428,32 @@ export default function SemesterPage({ userId, semesterNumber, onBack, onRefresh
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {GRADES.map((g) => (
-                    <GradePill
-                      key={g.value}
-                      value={g.value}
-                      selected={selectedGrade === g.value}
-                      onClick={() => setSelectedGrade(g.value)}
-                    />
+                    <GradePill key={g.value} value={g.value} selected={s.grade === g.value}
+                      onClick={() => dispatch({ type: "SET_GRADE", value: g.value })} />
                   ))}
                 </div>
-                {selectedGrade && (
+                {s.grade && (
                   <p className="mt-2 text-xs text-slate-500">
-                    {GRADES.find(g => g.value === selectedGrade)?.desc} · {GRADES.find(g => g.value === selectedGrade)?.points} grade points
+                    {GRADES.find(g => g.value === s.grade)?.desc} · {GRADES.find(g => g.value === s.grade)?.points} grade points
                   </p>
                 )}
               </div>
 
-              {modalError && (
+              {s.modalError && (
                 <div className="rounded-xl p-3 text-sm text-rose-300"
                   style={{ background: "rgba(251,113,133,0.08)", border: "1px solid rgba(251,113,133,0.15)" }}>
-                  {modalError}
+                  {s.modalError}
                 </div>
               )}
 
               <div className="flex gap-3">
-                <button type="button" onClick={handleSave} disabled={busy || !selectedSubjectId || !selectedGrade}
+                <button type="button" onClick={handleSave}
+                  disabled={s.busy || !s.subjectId || !s.grade}
                   className="button-primary flex-1">
-                  {busy ? "Saving…" : editingId ? "Update" : "Add Subject"}
+                  {s.busy ? "Saving…" : isEditMode ? "Update" : "Add Subject"}
                 </button>
-                <button type="button" onClick={() => setModalOpen(false)} className="button-secondary">
+                <button type="button" onClick={() => dispatch({ type: "CLOSE_MODAL" })}
+                  disabled={s.busy} className="button-secondary">
                   Cancel
                 </button>
               </div>
@@ -445,34 +462,37 @@ export default function SemesterPage({ userId, semesterNumber, onBack, onRefresh
         </div>
       )}
 
-      {/* Delete confirm modal */}
-      {deleteTarget && (
+      {/* Delete subject confirm */}
+      {s.deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
           style={{ background: "rgba(4,8,16,0.85)", backdropFilter: "blur(12px)" }}
-          onClick={(e) => { if (e.target === e.currentTarget) setDeleteTarget(null); }}>
+          onClick={(e) => { if (e.target === e.currentTarget && !s.deleteBusy) dispatch({ type: "SET_DELETE_TARGET", entry: null }); }}>
           <div className="w-full max-w-sm animate-in"
             style={{
-              background: "linear-gradient(135deg, rgba(13,22,40,0.98), rgba(8,15,30,0.98))",
-              border: "1px solid rgba(251,113,133,0.2)",
-              borderRadius: "20px", padding: "28px",
-              boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
+              background: "linear-gradient(135deg,rgba(13,22,40,0.98),rgba(8,15,30,0.98))",
+              border: "1px solid rgba(251,113,133,0.2)", borderRadius: "20px",
+              padding: "28px", boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
             }}>
             <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl"
               style={{ background: "rgba(251,113,133,0.1)", border: "1px solid rgba(251,113,133,0.2)" }}>
               <span style={{ fontSize: 20 }}>🗑️</span>
             </div>
-            <h2 className="card-title">Remove {deleteTarget.subject.name}?</h2>
+            <h2 className="card-title">Remove {s.deleteTarget.subject.name}?</h2>
             <p className="card-subtitle mt-1 mb-5">
-              Grade {GRADES.find(g => g.value === deleteTarget.grade)?.label} · {deleteTarget.subject.credits} credits.
-              SGPA will be recalculated automatically.
+              Grade {GRADES.find(g => g.value === s.deleteTarget.grade)?.label} · {s.deleteTarget.subject.credits} cr.
+              SGPA recalculates immediately.
             </p>
             <div className="flex gap-3">
-              <button type="button" onClick={handleDeleteConfirm} disabled={deleteBusy}
-                className="flex-1 inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all"
+              <button type="button" onClick={handleDeleteSubject} disabled={s.deleteBusy}
+                className="flex-1 inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-white"
                 style={{ background: "linear-gradient(135deg,#f43f5e,#fb7185)", boxShadow: "0 4px 16px rgba(244,63,94,0.3)" }}>
-                {deleteBusy ? "Removing…" : "Yes, remove"}
+                {s.deleteBusy ? "Removing…" : "Yes, remove"}
               </button>
-              <button type="button" className="button-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+              <button type="button" className="button-secondary"
+                disabled={s.deleteBusy}
+                onClick={() => dispatch({ type: "SET_DELETE_TARGET", entry: null })}>
+                Cancel
+              </button>
             </div>
           </div>
         </div>

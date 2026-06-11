@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.example.cgpacalc.DTO.SemesterDTO;
 import org.example.cgpacalc.DTO.TargetCgpaDTO;
 import org.example.cgpacalc.DTO.TargetCgpaResponse;
-import org.example.cgpacalc.model.Semester;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -16,8 +15,8 @@ public class CgpaCalcService {
     private final SemesterService semesterService;
     private final SgpaCalcService sgpaCalcService;
 
-    public int calculateTotalCredits(List<Semester> semesterList){
-        return semesterList.stream().map(Semester::getCredits).reduce(0, Integer::sum);
+    public int calculateTotalCredits(List<SemesterDTO> semesterList){
+        return semesterList.stream().mapToInt(SemesterDTO::getCredits).reduce(0, Integer::sum);
     }
 
     public double calculateWeightedSgpa(List<SemesterDTO> semesterList){
@@ -27,19 +26,32 @@ public class CgpaCalcService {
     public double calculateCgpa(Long userId){
 
         // Sem-wise cgpa data for the given user.
-        List<Semester> semesters = semesterService.findAllSemesterByUserId(userId);
+        List<SemesterDTO> semesters = semesterService.findAllSemesterByUserId(userId);
 
-        double sgpa = 0.00;
-
-        if(semesters.isEmpty()){
-            throw new RuntimeException("No semesters found for the given userId");
+        if (semesters.isEmpty()) {
+            return 0.0;
         }
 
-        for(Semester semester : semesters) {
-            sgpa += sgpaCalcService.calculateSgpa(semester.getId());
+        double totalGradePoints = 0;
+        int totalCredits = 0;
+
+        for (SemesterDTO semester : semesters) {
+
+            if (semester.getSgpa() == null ||
+                    semester.getCredits() == null ||
+                    semester.getCredits() == 0) {
+                continue;
+            }
+
+            totalGradePoints +=
+                    semester.getSgpa() * semester.getCredits();
+
+            totalCredits += semester.getCredits();
         }
 
-        return sgpa;
+        return totalCredits == 0
+                ? 0.0
+                : totalGradePoints / totalCredits;
             //get total credits & sgpa for all sems
 //        int totalCredits = calculateTotalCredits(semesters);//semesters.stream().mapToInt(Semester::getCredits).sum();
 //        double weightedSgpa = calculateWeightedSgpa(semesters);//semesters.stream().mapToDouble(s -> s.getSgpa() * s.getCredits()).sum();
@@ -63,7 +75,7 @@ public class CgpaCalcService {
 
             TargetCgpaResponse targetCgpaResponse = new TargetCgpaResponse();
 
-            List<Semester> semesters = semesterService.findAllSemesterByUserId(userId);
+            List<SemesterDTO> semesters = semesterService.findAllSemesterByUserId(userId);
 
             int currentCredits = calculateTotalCredits(semesters);
             double currentCgpa = calculateCgpa(userId);

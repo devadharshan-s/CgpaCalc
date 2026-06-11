@@ -22,87 +22,77 @@ public class SemesterService {
 
     private static final int MAX_SEMESTERS = 8;
 
-    public boolean validateSemester(Long semesterId) {
-        return semesterId != null && semesterId > 0 && semesterId <= MAX_SEMESTERS;
-    }
-
-    public List<Semester> findAllSemesterByUserId(Long userId) {
-        List<Semester> semesters = semesterRepository.findByUserId(userId);
-
-        return semesters;
-//        return semesters.stream()
-//                .map(s -> toSemesterDTO(userId, s))
-//                .toList();
+    public List<SemesterDTO> findAllSemesterByUserId(Long userId) {
+        return semesterRepository.findByUserId(userId).stream()
+                .map(s -> toSemesterDTO(userId, s))
+                .toList();
     }
 
     @Transactional
-    public SemesterDTO saveSemester(Long userId, SemesterRequestDTO semester) {
+    public SemesterDTO saveSemester(Long userId, SemesterRequestDTO request) {
         Users user = checkUserIfExists.checkUserIfExists(userId);
 
-        // Enforce 8-semester cap
-        long existingCount = semesterRepository.findByUserId(userId).size();
-        if (existingCount >= MAX_SEMESTERS) {
+        long count = semesterRepository.findByUserId(userId).size();
+        if (count >= MAX_SEMESTERS) {
             throw new RuntimeException("Maximum of " + MAX_SEMESTERS + " semesters allowed");
         }
 
-        // Prevent duplicate semester number
-        if (semesterRepository.findByUserIdAndSemester(userId, semester.getSemester()).isPresent()) {
-            throw new RuntimeException("Semester " + semester.getSemester() + " already exists");
+        if (semesterRepository.findByUserIdAndSemester(userId, request.getSemester()).isPresent()) {
+            throw new RuntimeException("Semester " + request.getSemester() + " already exists");
         }
 
-        Semester newSemester = new Semester();
-        newSemester.setSemester(semester.getSemester());
-        newSemester.setCredits(semester.getCredits());
-        newSemester.setUser(user);
+        Semester s = new Semester();
+        s.setSemester(request.getSemester());
+        s.setCredits(0);
+        s.setUser(user);
+        semesterRepository.save(s);
 
-        semesterRepository.save(newSemester);
-
-        return toSemesterDTO(userId, newSemester);
+        return toSemesterDTO(userId, s);
     }
 
     @Transactional
-    public SemesterDTO updateSemester(Long userId, SemesterRequestDTO semester) {
+    public SemesterDTO updateSemester(Long userId, SemesterRequestDTO request) {
         checkUserIfExists.checkUserIfExists(userId);
 
-        if (!validateSemester((long) semester.getSemester())) {
+        Semester s = semesterRepository.findByUserIdAndSemester(userId, request.getSemester())
+                .orElseThrow(() -> new RuntimeException("Semester not found: " + request.getSemester()));
+
+        s.setCredits(request.getCredits());
+        semesterRepository.save(s);
+        return toSemesterDTO(userId, s);
+    }
+
+    /**
+     * Delete by semester NUMBER (1-8), not DB row ID.
+     * Deletes all student_subjects first, then the semester row,
+     * so CGPA auto-recalculates next time /users/{id}/cgpa is called.
+     */
+    @Transactional
+    public void deleteSemester(Long userId, int semesterNumber) {
+        if (semesterNumber < 1 || semesterNumber > MAX_SEMESTERS) {
             throw new IllegalArgumentException("Semester must be between 1 and 8");
         }
 
-        Semester semToBeUpdated = semesterRepository.findByUserIdAndSemester(userId, semester.getSemester())
-                .orElseThrow(() -> new RuntimeException("Semester not found: " + semester.getSemester()));
-
-        semToBeUpdated.setCredits(semester.getCredits());
-
-        Semester updated = semesterRepository.save(semToBeUpdated);
-
-        return toSemesterDTO(userId, updated);
-    }
-
-    @Transactional
-    public void deleteSemester(Long userId, Long semesterId) {
         Users user = checkUserIfExists.checkUserIfExists(userId);
 
-        if (!validateSemester(semesterId)) {
-            throw new IllegalArgumentException("Semester id must be between 1 and 8");
-        }
-
-        Semester semester = semesterRepository.findById(semesterId)
-                .orElseThrow(() -> new RuntimeException("Semester not found: " + semesterId));
+        Semester semester = semesterRepository.findByUserIdAndSemester(userId, semesterNumber)
+                .orElseThrow(() -> new RuntimeException("Semester " + semesterNumber + " not found"));
 
         if (!semester.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Semester doesn't belong to this user!");
+            throw new RuntimeException("Semester doesn't belong to this user");
         }
 
+        // Delete all subjects for this semester first (FK constraint)
         studentSubjectService.deleteAllForSemester(semester.getId());
         semesterRepository.delete(semester);
     }
 
     private SemesterDTO toSemesterDTO(Long userId, Semester semester) {
-        SemesterDTO semesterDTO = new SemesterDTO();
-        semesterDTO.setSemester(semester.getSemester());
         SemesterSubjectSummaryDTO summary = studentSubjectService.getSummary(userId, semester.getSemester());
-        semesterDTO.setSgpa(summary.getSgpa());
-        semesterDTO.setCredits(summary.getCredits());
-        return semesterDTO;
+        SemesterDTO dto = new SemesterDTO();
+        dto.setSemester(semester.getSemester());
+        dto.setSgpa(summary.getSgpa());
+        dto.setCredits(summary.getCredits());
+        return dto;
     }
 }
